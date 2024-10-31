@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "virtual-gsm-gateway-chart.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    {{- include "virtual-gsm-gateway-chart.annotations" . | nindent 4 }}
+  labels:
+    {{- include "virtual-gsm-gateway-chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "virtual-gsm-gateway-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "virtual-gsm-gateway-chart.labels" . | nindent 8 }}
+      annotations:
+        {{- include "virtual-gsm-gateway-chart.annotations" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "virtual-gsm-gateway-chart.serviceAccountName" . }}
+      containers:
+        - name: {{ .Values.name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.containerPort }}
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+          env:
+            - name: IMAGE_REPOSITORY
+              valueFrom:
+                secretKeyRef:
+                  name: image-repository-secret
+                  key: repository
