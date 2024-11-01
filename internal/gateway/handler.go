@@ -2,7 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -11,67 +11,47 @@ type Gateway struct {
 	ussdRequests []USSD
 	mmsMessages  []MMS
 	contacts     []Contact
-	logger       *log.Logger
+	logger       *slog.Logger
 }
 
-func NewGateway(logger *log.Logger) *Gateway {
+func NewGateway(logger *slog.Logger) *Gateway {
 	return &Gateway{
-		messages:     []SMS{},
-		ussdRequests: []USSD{},
-		mmsMessages:  []MMS{},
-		contacts:     []Contact{},
-		logger:       logger,
+		logger: logger,
 	}
 }
 
-func decodeJSON(w http.ResponseWriter, r *http.Request, v interface{}) bool {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
-		return false
-	}
-	return true
-}
-
-func encodeJSON(w http.ResponseWriter, v interface{}, logger *log.Logger) bool {
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		logger.Printf("Error encoding response: %v", err)
-		return false
-	}
-	return true
-}
-
-// Helper function to log and send error response
-func logAndRespondError(w http.ResponseWriter, logger *log.Logger, message string, statusCode int, err error) {
+func logAndRespondError(w http.ResponseWriter, logger *slog.Logger, message string, statusCode int, err error) {
 	http.Error(w, message, statusCode)
-	logger.Printf("%s: %v", message, err)
+	logger.Error(message, "error", err)
 }
 
 func (g *Gateway) SendSMS(w http.ResponseWriter, r *http.Request) {
 	var sms SMS
-	if !decodeJSON(w, r, &sms) {
-		g.logger.Printf("Error decoding SMS")
+	if err := json.NewDecoder(r.Body).Decode(&sms); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 	g.messages = append(g.messages, sms)
 	w.WriteHeader(http.StatusCreated)
-	g.logger.Printf("SMS received: %+v", sms)
+	g.logger.Info("SMS received", "sms", sms)
 }
 
 func (g *Gateway) GetSMS(w http.ResponseWriter, r *http.Request) {
-	encodeJSON(w, g.messages, g.logger)
+	if err := json.NewEncoder(w).Encode(g.messages); err != nil {
+		logAndRespondError(w, g.logger, "Error encoding response", http.StatusInternalServerError, err)
+	}
 }
 
 func (g *Gateway) DeleteSMS(w http.ResponseWriter, r *http.Request) {
 	g.messages = []SMS{}
 	w.WriteHeader(http.StatusOK)
-	g.logger.Println("All SMS messages deleted")
+	g.logger.Info("All SMS messages deleted")
 }
 
 func (g *Gateway) UpdateSMS(w http.ResponseWriter, r *http.Request) {
 	var sms SMS
-	if !decodeJSON(w, r, &sms) {
-		g.logger.Printf("Error decoding SMS")
+	if err := json.NewDecoder(r.Body).Decode(&sms); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 
@@ -79,84 +59,89 @@ func (g *Gateway) UpdateSMS(w http.ResponseWriter, r *http.Request) {
 		if msg.From == sms.From && msg.To == sms.To {
 			g.messages[i] = sms
 			w.WriteHeader(http.StatusOK)
-			g.logger.Printf("SMS updated: %+v", sms)
+			g.logger.Info("SMS updated", "sms", sms)
 			return
 		}
 	}
 
 	http.Error(w, "SMS not found", http.StatusNotFound)
-	g.logger.Printf("SMS not found for update: %+v", sms)
+	g.logger.Warn("SMS not found for update", "sms", sms)
 }
 
 func (g *Gateway) SendUSSD(w http.ResponseWriter, r *http.Request) {
 	var ussd USSD
-	if !decodeJSON(w, r, &ussd) {
-		g.logger.Printf("Error decoding USSD")
+	if err := json.NewDecoder(r.Body).Decode(&ussd); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 	ussd.Response = "USSD response for code: " + ussd.Code
 	g.ussdRequests = append(g.ussdRequests, ussd)
-	if !encodeJSON(w, ussd, g.logger) {
+	if err := json.NewEncoder(w).Encode(ussd); err != nil {
+		logAndRespondError(w, g.logger, "Error encoding response", http.StatusInternalServerError, err)
 		return
 	}
-	g.logger.Printf("USSD received: %+v", ussd)
+	g.logger.Info("USSD request processed", "ussd", ussd)
 }
 
 func (g *Gateway) GetUSSD(w http.ResponseWriter, r *http.Request) {
-	encodeJSON(w, g.ussdRequests, g.logger)
+	if err := json.NewEncoder(w).Encode(g.ussdRequests); err != nil {
+		logAndRespondError(w, g.logger, "Error encoding response", http.StatusInternalServerError, err)
+	}
 }
 
 func (g *Gateway) DeleteUSSD(w http.ResponseWriter, r *http.Request) {
 	g.ussdRequests = []USSD{}
 	w.WriteHeader(http.StatusOK)
-	g.logger.Println("All USSD requests deleted")
+	g.logger.Info("All USSD requests deleted")
 }
 
 func (g *Gateway) UpdateUSSD(w http.ResponseWriter, r *http.Request) {
 	var ussd USSD
-	if !decodeJSON(w, r, &ussd) {
-		g.logger.Printf("Error decoding USSD")
+	if err := json.NewDecoder(r.Body).Decode(&ussd); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 
 	for i, req := range g.ussdRequests {
-		if req.From == ussd.From && req.Code == ussd.Code {
+		if req.Code == ussd.Code {
 			g.ussdRequests[i] = ussd
 			w.WriteHeader(http.StatusOK)
-			g.logger.Printf("USSD updated: %+v", ussd)
+			g.logger.Info("USSD updated", "ussd", ussd)
 			return
 		}
 	}
 
 	http.Error(w, "USSD not found", http.StatusNotFound)
-	g.logger.Printf("USSD not found for update: %+v", ussd)
+	g.logger.Warn("USSD not found for update", "ussd", ussd)
 }
 
 func (g *Gateway) SendMMS(w http.ResponseWriter, r *http.Request) {
 	var mms MMS
-	if !decodeJSON(w, r, &mms) {
-		g.logger.Printf("Error decoding MMS")
+	if err := json.NewDecoder(r.Body).Decode(&mms); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 	g.mmsMessages = append(g.mmsMessages, mms)
 	w.WriteHeader(http.StatusCreated)
-	g.logger.Printf("MMS received: %+v", mms)
+	g.logger.Info("MMS received", "mms", mms)
 }
 
 func (g *Gateway) GetMMS(w http.ResponseWriter, r *http.Request) {
-	encodeJSON(w, g.mmsMessages, g.logger)
+	if err := json.NewEncoder(w).Encode(g.mmsMessages); err != nil {
+		logAndRespondError(w, g.logger, "Error encoding response", http.StatusInternalServerError, err)
+	}
 }
 
 func (g *Gateway) DeleteMMS(w http.ResponseWriter, r *http.Request) {
 	g.mmsMessages = []MMS{}
 	w.WriteHeader(http.StatusOK)
-	g.logger.Println("All MMS messages deleted")
+	g.logger.Info("All MMS messages deleted")
 }
 
 func (g *Gateway) UpdateMMS(w http.ResponseWriter, r *http.Request) {
 	var mms MMS
-	if !decodeJSON(w, r, &mms) {
-		g.logger.Printf("Error decoding MMS")
+	if err := json.NewDecoder(r.Body).Decode(&mms); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 
@@ -164,52 +149,54 @@ func (g *Gateway) UpdateMMS(w http.ResponseWriter, r *http.Request) {
 		if msg.From == mms.From && msg.To == mms.To {
 			g.mmsMessages[i] = mms
 			w.WriteHeader(http.StatusOK)
-			g.logger.Printf("MMS updated: %+v", mms)
+			g.logger.Info("MMS updated", "mms", mms)
 			return
 		}
 	}
 
 	http.Error(w, "MMS not found", http.StatusNotFound)
-	g.logger.Printf("MMS not found for update: %+v", mms)
+	g.logger.Warn("MMS not found for update", "mms", mms)
 }
 
 func (g *Gateway) AddContact(w http.ResponseWriter, r *http.Request) {
 	var contact Contact
-	if !decodeJSON(w, r, &contact) {
-		g.logger.Printf("Error decoding contact")
+	if err := json.NewDecoder(r.Body).Decode(&contact); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 	g.contacts = append(g.contacts, contact)
 	w.WriteHeader(http.StatusCreated)
-	g.logger.Printf("Contact added: %+v", contact)
+	g.logger.Info("Contact added", "contact", contact)
 }
 
 func (g *Gateway) GetContacts(w http.ResponseWriter, r *http.Request) {
-	encodeJSON(w, g.contacts, g.logger)
+	if err := json.NewEncoder(w).Encode(g.contacts); err != nil {
+		logAndRespondError(w, g.logger, "Error encoding response", http.StatusInternalServerError, err)
+	}
 }
 
 func (g *Gateway) DeleteContacts(w http.ResponseWriter, r *http.Request) {
 	g.contacts = []Contact{}
 	w.WriteHeader(http.StatusOK)
-	g.logger.Println("All contacts deleted")
+	g.logger.Info("All contacts deleted")
 }
 
 func (g *Gateway) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	var contact Contact
-	if !decodeJSON(w, r, &contact) {
-		g.logger.Printf("Error decoding contact")
+	if err := json.NewDecoder(r.Body).Decode(&contact); err != nil {
+		logAndRespondError(w, g.logger, "Invalid request payload", http.StatusBadRequest, err)
 		return
 	}
 
 	for i, c := range g.contacts {
-		if c.Phone == contact.Phone {
+		if c.ID == contact.ID {
 			g.contacts[i] = contact
 			w.WriteHeader(http.StatusOK)
-			g.logger.Printf("Contact updated: %+v", contact)
+			g.logger.Info("Contact updated", "contact", contact)
 			return
 		}
 	}
 
 	http.Error(w, "Contact not found", http.StatusNotFound)
-	g.logger.Printf("Contact not found for update: %+v", contact)
+	g.logger.Warn("Contact not found for update", "contact", contact)
 }
