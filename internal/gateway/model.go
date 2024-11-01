@@ -1,25 +1,26 @@
 package gateway
 
+type Contact struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+	Email string `json:"email"`
+}
+
 type SMS struct {
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Message string `json:"message"`
+	From string `json:"from"`
+	To   string `json:"to"`
+	Body string `json:"body"`
 }
 
 type USSD struct {
-	From     string `json:"from"`
 	Code     string `json:"code"`
 	Response string `json:"response"`
 }
 
 type MMS struct {
-	From    string   `json:"from"`
-	To      string   `json:"to"`
-	Message string   `json:"message"`
-	Media   []string `json:"media"`
-}
-
-type Contact struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Subject string `json:"subject"`
+	Body    string `json:"body"`
 }
