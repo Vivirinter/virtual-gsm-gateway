@@ -20,9 +20,9 @@ func NewGateway(logger *slog.Logger) *Gateway {
 	}
 }
 
-func logAndRespondError(w http.ResponseWriter, logger *slog.Logger, message string, statusCode int, err error) {
-	http.Error(w, message, statusCode)
-	logger.Error(message, "error", err)
+func logAndRespondError(w http.ResponseWriter, logger *slog.Logger, userMessage string, statusCode int, err error) {
+	http.Error(w, userMessage, statusCode)
+	logger.Error("Internal error", "error", err)
 }
 
 func (g *Gateway) SendSMS(w http.ResponseWriter, r *http.Request) {
